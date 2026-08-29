@@ -33,12 +33,46 @@ enum SuggestionStatus {
   REJECTED
 }
 
+enum FoodSourceType {
+  MANUAL
+  MANUFACTURER_LABEL
+  LICENSED_DATABASE
+  TBCA_REFERENCE
+  TUCUNDUVA_REFERENCE
+  OTHER
+}
+
+enum FoodKind {
+  IN_NATURA
+  CULINARY_INGREDIENT
+  PREPARATION
+  INDUSTRIALIZED
+  SUPPLEMENT
+}
+
+enum ProtocolStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum RuleEffect {
+  ALLOW
+  PRIORITIZE
+  LIMIT
+  EXCLUDE
+  REQUIRE
+}
+
 model Tenant {
   id            String         @id @default(uuid())
   name          String
   professionals Professional[]
   patients      Patient[]
   consultations Consultation[]
+  foods         Food[]
+  recipes       Recipe[]
+  protocols     Protocol[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 }
@@ -128,6 +162,210 @@ model ClinicalSuggestion {
 
   @@index([tenantId, consultationId, fieldPath])
   @@index([tenantId, consultationId, status])
+}
+
+model Food {
+  id                 String          @id @default(uuid())
+  tenantId           String
+  name               String
+  displayName        String
+  kind               FoodKind       @default(IN_NATURA)
+  brand              String?
+  gtin               String?
+  foodGroup           String?
+  preparationMethod  String?
+  referenceAmountG   Decimal         @db.Decimal(10, 3)
+  energyKcal100g     Decimal         @db.Decimal(10, 3)
+  proteinG100g       Decimal         @db.Decimal(10, 3)
+  carbohydrateG100g  Decimal         @db.Decimal(10, 3)
+  fatG100g           Decimal         @db.Decimal(10, 3)
+  fiberG100g         Decimal?        @db.Decimal(10, 3)
+  saturatedFatG100g  Decimal?        @db.Decimal(10, 3)
+  totalSugarG100g    Decimal?        @db.Decimal(10, 3)
+  addedSugarG100g    Decimal?        @db.Decimal(10, 3)
+  sodiumMg100g       Decimal?        @db.Decimal(10, 3)
+  ingredients        String?
+  allergens          String[]
+  claims             String[]
+  costLevel          Int?
+  prepTimeMinutes    Int?
+  active             Boolean         @default(true)
+  tenant             Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sources            FoodSource[]
+  measures           HouseholdMeasure[]
+  recipeIngredients  RecipeIngredient[]
+  protocolPolicies   ProtocolFoodPolicy[]
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  @@unique([tenantId, gtin])
+  @@index([tenantId, name])
+  @@index([tenantId, kind, active])
+}
+
+model FoodSource {
+  id              String         @id @default(uuid())
+  foodId           String
+  type             FoodSourceType
+  sourceName       String
+  sourceVersion    String?
+  externalCode     String?
+  sourceUrl        String?
+  licenseNote      String?
+  capturedAt       DateTime?
+  manufacturerDate DateTime?
+  notes            String?
+  food             Food           @relation(fields: [foodId], references: [id], onDelete: Cascade)
+  createdAt        DateTime       @default(now())
+
+  @@index([foodId, type])
+}
+
+model HouseholdMeasure {
+  id       String  @id @default(uuid())
+  foodId   String
+  name     String
+  grams    Decimal @db.Decimal(10, 3)
+  priority Int     @default(0)
+  food     Food    @relation(fields: [foodId], references: [id], onDelete: Cascade)
+
+  @@index([foodId])
+}
+
+model Recipe {
+  id              String             @id @default(uuid())
+  tenantId        String
+  name            String
+  description     String?
+  instructions    String
+  prepTimeMinutes Int?
+  yieldServings   Decimal            @db.Decimal(10, 2)
+  servingWeightG  Decimal?           @db.Decimal(10, 3)
+  tags            String[]
+  active          Boolean            @default(true)
+  tenant          Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ingredients     RecipeIngredient[]
+  protocolPolicies ProtocolRecipePolicy[]
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@index([tenantId, name])
+}
+
+model RecipeIngredient {
+  id       String  @id @default(uuid())
+  recipeId String
+  foodId   String
+  grams    Decimal @db.Decimal(10, 3)
+  order    Int     @default(0)
+  recipe   Recipe  @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  food     Food    @relation(fields: [foodId], references: [id], onDelete: Restrict)
+
+  @@index([recipeId, order])
+}
+
+model Protocol {
+  id             String          @id @default(uuid())
+  tenantId       String
+  name           String
+  description    String?
+  status         ProtocolStatus  @default(DRAFT)
+  currentVersion Int             @default(1)
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  versions       ProtocolVersion[]
+  aiSuggestions  ProtocolAISuggestion[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([tenantId, status, name])
+}
+
+model ProtocolVersion {
+  id          String             @id @default(uuid())
+  protocolId  String
+  version     Int
+  changeNote  String?
+  publishedAt DateTime?
+  protocol    Protocol           @relation(fields: [protocolId], references: [id], onDelete: Cascade)
+  phases      ProtocolPhase[]
+  rules       ProtocolRule[]
+  foodPolicies ProtocolFoodPolicy[]
+  recipePolicies ProtocolRecipePolicy[]
+  createdAt   DateTime           @default(now())
+
+  @@unique([protocolId, version])
+}
+
+model ProtocolPhase {
+  id                String          @id @default(uuid())
+  protocolVersionId String
+  name              String
+  description       String?
+  order             Int
+  durationDays      Int?
+  goals             Json?
+  protocolVersion   ProtocolVersion @relation(fields: [protocolVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([protocolVersionId, order])
+}
+
+model ProtocolRule {
+  id                String          @id @default(uuid())
+  protocolVersionId String
+  phaseOrder        Int?
+  name              String
+  description       String?
+  scope             String
+  condition         Json
+  effect            RuleEffect
+  action            Json
+  priority          Int             @default(100)
+  enabled           Boolean         @default(true)
+  protocolVersion   ProtocolVersion @relation(fields: [protocolVersionId], references: [id], onDelete: Cascade)
+
+  @@index([protocolVersionId, phaseOrder, priority])
+}
+
+model ProtocolFoodPolicy {
+  id                String          @id @default(uuid())
+  protocolVersionId String
+  foodId            String
+  phaseOrder        Int?
+  effect            RuleEffect
+  reason            String?
+  protocolVersion   ProtocolVersion @relation(fields: [protocolVersionId], references: [id], onDelete: Cascade)
+  food              Food            @relation(fields: [foodId], references: [id], onDelete: Cascade)
+
+  @@unique([protocolVersionId, foodId, phaseOrder])
+}
+
+model ProtocolRecipePolicy {
+  id                String          @id @default(uuid())
+  protocolVersionId String
+  recipeId          String
+  phaseOrder        Int?
+  effect            RuleEffect
+  reason            String?
+  protocolVersion   ProtocolVersion @relation(fields: [protocolVersionId], references: [id], onDelete: Cascade)
+  recipe            Recipe          @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@unique([protocolVersionId, recipeId, phaseOrder])
+}
+
+model ProtocolAISuggestion {
+  id          String           @id @default(uuid())
+  protocolId  String
+  status      SuggestionStatus @default(AI_SUGGESTED)
+  title       String
+  rationale   String
+  patch       Json
+  model       String?
+  promptVersion String?
+  protocol    Protocol         @relation(fields: [protocolId], references: [id], onDelete: Cascade)
+  createdAt   DateTime         @default(now())
+  reviewedAt  DateTime?
+
+  @@index([protocolId, status, createdAt])
 }
 
 model AuditLog {
