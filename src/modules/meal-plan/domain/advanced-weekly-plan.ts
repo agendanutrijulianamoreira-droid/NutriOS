@@ -1,5 +1,6 @@
 import type { PatientCriteria } from "@/modules/nutrition-engine/domain/engine";
 import type { WeeklyDayPlan, Weekday, ShoppingListLine } from "./weekly-plan";
+export type { Weekday } from "./weekly-plan";
 
 export type DayProfile = "TRAINING" | "REST";
 
