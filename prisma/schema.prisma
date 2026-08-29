@@ -1,0 +1,146 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ConsultationStatus {
+  CREATED
+  READY
+  RECORDING
+  PAUSED
+  OFFLINE
+  SYNCING
+  PROCESSING
+  REVIEWING
+  FINALIZED
+  FAILED
+}
+
+enum TranscriptSpeaker {
+  NUTRITIONIST
+  PATIENT
+  UNKNOWN
+}
+
+enum SuggestionStatus {
+  AI_SUGGESTED
+  ACCEPTED
+  EDITED
+  REJECTED
+}
+
+model Tenant {
+  id            String         @id @default(uuid())
+  name          String
+  professionals Professional[]
+  patients      Patient[]
+  consultations Consultation[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
+model Professional {
+  id         String   @id @default(uuid())
+  tenantId   String
+  authUserId String   @unique
+  name       String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+model Patient {
+  id            String         @id @default(uuid())
+  tenantId      String
+  name          String
+  birthDate     DateTime?
+  sex           String?
+  profession    String?
+  email         String?
+  phone         String?
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  consultations Consultation[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([tenantId, name])
+}
+
+model Consultation {
+  id                    String              @id @default(uuid())
+  tenantId              String
+  patientId             String
+  professionalId        String?
+  status                ConsultationStatus  @default(CREATED)
+  targetDurationMinutes Int                 @default(15)
+  startedAt             DateTime?
+  completedAt           DateTime?
+  tenant                Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  patient               Patient             @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  transcriptSegments    TranscriptSegment[]
+  clinicalSuggestions   ClinicalSuggestion[]
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  @@index([tenantId, patientId, createdAt])
+  @@index([tenantId, status])
+}
+
+model TranscriptSegment {
+  id             String            @id @default(uuid())
+  tenantId       String
+  consultationId String
+  speaker        TranscriptSpeaker @default(UNKNOWN)
+  text           String
+  startedAtMs    Int
+  endedAtMs      Int?
+  confidence     Float?
+  isFinal        Boolean           @default(false)
+  source         String
+  revision       Int               @default(1)
+  consultation   Consultation      @relation(fields: [consultationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([tenantId, consultationId, startedAtMs])
+}
+
+model ClinicalSuggestion {
+  id                         String           @id @default(uuid())
+  tenantId                   String
+  consultationId             String
+  fieldPath                  String
+  value                      Json
+  confidence                 Float?
+  sourceTranscriptSegmentIds String[]
+  status                     SuggestionStatus @default(AI_SUGGESTED)
+  promptVersion              String?
+  model                      String?
+  consultation               Consultation     @relation(fields: [consultationId], references: [id], onDelete: Cascade)
+  createdAt                  DateTime         @default(now())
+  updatedAt                  DateTime         @updatedAt
+
+  @@index([tenantId, consultationId, fieldPath])
+  @@index([tenantId, consultationId, status])
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  tenantId    String
+  actorUserId String?
+  entityType  String
+  entityId    String
+  action      String
+  before      Json?
+  after       Json?
+  source      String
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, entityType, entityId, createdAt])
+}
