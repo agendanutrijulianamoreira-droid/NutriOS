@@ -3,18 +3,18 @@
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-export async function signInWithPassword(formData: FormData) {
+export async function signInWithPassword(formData: FormData): Promise<void> {
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
-  if (!email || !password) return { error: "Informe e-mail e senha." };
+  if (!email || !password) redirect("/login?error=missing");
 
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) return { error: "Não foi possível entrar com essas credenciais." };
+  if (error) redirect("/login?error=invalid");
   redirect("/");
 }
 
-export async function signOut() {
+export async function signOut(): Promise<void> {
   const supabase = await createSupabaseServerClient();
   await supabase.auth.signOut();
   redirect("/login");
