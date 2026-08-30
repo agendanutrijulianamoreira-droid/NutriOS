@@ -4,7 +4,7 @@ import { requireSupabaseUser } from "@/lib/supabase/server";
 
 export async function GET() {
   try {
-    const user = await requireSupabaseUser();
+    const { user } = await requireSupabaseUser();
 
     const professional = await prisma.professional.findUnique({
       where: { authUserId: user.id },
